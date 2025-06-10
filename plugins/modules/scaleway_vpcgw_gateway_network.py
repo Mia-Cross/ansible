@@ -101,17 +101,18 @@ from ansible.module_utils.basic import (
     AnsibleModule,
     missing_required_lib,
 )
-from ansible_collections.scaleway.scaleway.plugins.module_utils.scaleway import (
+from ..module_utils.scaleway import (
     scaleway_argument_spec,
     scaleway_waitable_resource_argument_spec,
     scaleway_get_client_from_module,
     scaleway_pop_client_params,
     scaleway_pop_waitable_resource_params,
+    object_to_dict,
 )
 
 try:
     from scaleway import Client, ScalewayException
-    from scaleway.vpcgw.v1 import VpcgwV1API
+    from scaleway.vpcgw.v2 import VpcgwV2API
 
     HAS_SCALEWAY_SDK = True
 except ImportError:
@@ -119,7 +120,7 @@ except ImportError:
 
 
 def create(module: AnsibleModule, client: "Client") -> None:
-    api = VpcgwV1API(client)
+    api = VpcgwV2API(client)
 
     id = module.params.pop("id", None)
     if id is not None:
@@ -138,20 +139,20 @@ def create(module: AnsibleModule, client: "Client") -> None:
     }
     resource = api.create_gateway_network(**not_none_params)
     resource = api.wait_for_gateway_network(
-        gateway_network_id=resource.id, region=module.params["region"]
+        gateway_network_id=resource.id, zone=module.params["zone"]
     )
 
-    module.exit_json(changed=True, data=resource.__dict__)
+    module.exit_json(changed=True, data=object_to_dict(resource))
 
 
 def delete(module: AnsibleModule, client: "Client") -> None:
-    api = VpcgwV1API(client)
+    api = VpcgwV2API(client)
 
     id = module.params.pop("id", None)
 
     if id is not None:
         resource = api.get_gateway_network(
-            gateway_network_id=id, region=module.params["region"]
+            gateway_network_id=id, zone=module.params["zone"]
         )
     else:
         module.fail_json(msg="id is required")
@@ -160,12 +161,12 @@ def delete(module: AnsibleModule, client: "Client") -> None:
         module.exit_json(changed=True)
 
     api.delete_gateway_network(
-        gateway_network_id=resource.id, region=module.params["region"]
+        gateway_network_id=resource.id, zone=module.params["zone"]
     )
 
     try:
         api.wait_for_gateway_network(
-            gateway_network_id=resource.id, region=module.params["region"]
+            gateway_network_id=resource.id, zone=module.params["zone"]
         )
     except ScalewayException as e:
         if e.status_code != 404:
@@ -224,6 +225,10 @@ def main() -> None:
             type="bool",
             required=False,
         ),
+        push_default_route=dict(
+            type="bool",
+            required=False,
+        )
     )
 
     module = AnsibleModule(

@@ -129,12 +129,13 @@ from ansible.module_utils.basic import (
     AnsibleModule,
     missing_required_lib,
 )
-from ansible_collections.scaleway.scaleway.plugins.module_utils.scaleway import (
+from ..module_utils.scaleway import (
     scaleway_argument_spec,
     scaleway_waitable_resource_argument_spec,
     scaleway_get_client_from_module,
     scaleway_pop_client_params,
     scaleway_pop_waitable_resource_params,
+    object_to_dict,
 )
 
 try:
@@ -166,10 +167,10 @@ def create(module: AnsibleModule, client: "Client") -> None:
     }
     resource = api.create_gateway(**not_none_params)
     resource = api.wait_for_gateway(
-        gateway_id=resource.id, region=module.params["region"]
+        gateway_id=resource.id, zone=module.params["zone"]
     )
 
-    module.exit_json(changed=True, data=resource.__dict__)
+    module.exit_json(changed=True, data=object_to_dict(resource))
 
 
 def delete(module: AnsibleModule, client: "Client") -> None:
@@ -179,9 +180,9 @@ def delete(module: AnsibleModule, client: "Client") -> None:
     name = module.params.pop("name", None)
 
     if id is not None:
-        resource = api.get_gateway(gateway_id=id, region=module.params["region"])
+        resource = api.get_gateway(gateway_id=id, zone=module.params["zone"])
     elif name is not None:
-        resources = api.list_gateways_all(name=name, region=module.params["region"])
+        resources = api.list_gateways_all(name=name, zone=module.params["zone"])
         if len(resources) == 0:
             module.exit_json(msg="No gateway found with name {name}")
         elif len(resources) > 1:
@@ -194,10 +195,10 @@ def delete(module: AnsibleModule, client: "Client") -> None:
     if module.check_mode:
         module.exit_json(changed=True)
 
-    api.delete_gateway(gateway_id=resource.id, region=module.params["region"])
+    api.delete_gateway(gateway_id=resource.id, zone=module.params["zone"])
 
     try:
-        api.wait_for_gateway(gateway_id=resource.id, region=module.params["region"])
+        api.wait_for_gateway(gateway_id=resource.id, zone=module.params["zone"])
     except ScalewayException as e:
         if e.status_code != 404:
             raise e
@@ -212,8 +213,10 @@ def core(module: AnsibleModule) -> None:
     client = scaleway_get_client_from_module(module)
 
     state = module.params.pop("state")
+    project_id = module.params["project_id"]
     scaleway_pop_client_params(module)
     scaleway_pop_waitable_resource_params(module)
+    module.params["project_id"] = project_id
 
     if state == "present":
         create(module, client)
